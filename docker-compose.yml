@@ -1,0 +1,13 @@
+services:
+  meshwx:
+    build: .
+    container_name: mesh_bot
+    restart: unless-stopped
+    environment:
+      - MESH_HOST=10.0.0.90
+      - MESH_PORT=4403
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
