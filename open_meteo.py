@@ -1,9 +1,7 @@
 import logging
 import requests
 import re
-from state_abbreviations import STATE_ABBREV
-from country_abbreviations import COUNTRY_ABBREV
-from weather_codes import *
+from open_meteo_definitions import *
 
 log = logging.getLogger("OpenMeteo")
 
