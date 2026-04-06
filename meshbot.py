@@ -10,7 +10,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] [%(levelname)s] %(message)s",
 )
-log = logging.getLogger("MeshWX")
+log = logging.getLogger("MeshBot")
 
 HELP_TEXT = (
     "Weather Bot 🌤\n"
@@ -22,31 +22,52 @@ HELP_TEXT = (
     "Type 'wxbot help' or 'wxbot ?' to see this message again."
 )
 
-def handle_weather_command(command):
+def handle_weather_command(command, packet, interface):
     reply = ""
 
-    if len(command) >= 1:
-        if command[0] in ("help", "?"):
-            reply = HELP_TEXT
-        elif command[0] in ("location", "area"):
-            location = " ".join(command[1:])
-            coords = open_meteo.geocode(location)
+    if len(command) == 0 or command[0] in ("help", "?"):
+        return HELP_TEXT
 
+    if command[0] in ("location", "area"):
+        location_str = " ".join(command[1:])
+
+        if location_str:
+            # User provided a location string
+            coords = open_meteo.geocode(location_str)
             if not coords:
-                reply = f"Sorry, location \"{location}\" not found.\nPlease try rewording the location."
-            else:
-                weather = open_meteo.fetch_weather(coords[0], coords[1], coords[2])
-
-                if not weather:
-                    reply = f"Sorry, could not fetch weather for {location} right now.\nPlease try again later."
-                else:
-                    reply = weather
+                return f"Sorry, location \"{location_str}\" not found."
+            lat, lon, display = coords
         else:
-            reply = HELP_TEXT
-    else:
-        reply = HELP_TEXT
+            # No location provided — try sender's GPS
+            node_id = packet.get("from")
+            pos = get_node_position(interface, node_id)
+            if not pos:
+                return "No location provided and your node has no GPS position on record."
+            lat, lon = pos
+            display = f"your location ({lat:.4f}, {lon:.4f})"
+            log.info("Using node GPS position: %s", display)
 
-    return reply
+        weather = open_meteo.fetch_weather(lat, lon, display)
+        if not weather:
+            return f"Sorry, could not fetch weather for {display} right now."
+        return weather
+
+    return HELP_TEXT
+
+def get_node_position(interface, node_id: int) -> tuple[float, float] | None:
+    # Look up the last known GPS position of a node. Returns (lat, lon) or None.
+
+    nodes = interface.nodes
+    if not nodes:
+        return None
+
+    # nodes is a dict keyed by hex node ID string e.g. "!a1b2c3d4"
+    for node in nodes.values():
+        if node.get("num") == node_id:
+            pos = node.get("position")
+            if pos and "latitude" in pos and "longitude" in pos:
+                return (pos["latitude"], pos["longitude"])
+    return None
 
 def handle_ping(packet, interface):
     # Respond to a ping with pong and signal statistics.
@@ -104,7 +125,7 @@ def on_receive(packet, interface):
         log.info("Command: %s", str(command))
 
         if message_text.startswith("wxbot"):
-            reply = handle_weather_command(command)
+            reply = handle_weather_command(command, packet, interface)
         elif message_text.startswith("ping"):
             reply = handle_ping(packet, interface)
 
